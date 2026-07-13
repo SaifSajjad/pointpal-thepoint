@@ -8,7 +8,7 @@ The application is deliberately grounded: deterministic retrieval owns every bus
 
 ## Live demo
 
-Deployment in progress. The final Vercel URL will be added here after production verification.
+**Public app:** <https://pointpal-thepoint.vercel.app>
 
 ## Features
 
@@ -57,7 +57,7 @@ OpenAI is imported only by server code. `OPENAI_API_KEY` is read only through `p
 
 ## Local setup
 
-Requirements: Node.js 20.9 or newer and npm.
+Requirements: Node.js 22 LTS and npm.
 
 ```bash
 git clone https://github.com/SaifSajjad/pointpal-thepoint.git

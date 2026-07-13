@@ -3,7 +3,7 @@
 ## Links
 
 - GitHub: <https://github.com/SaifSajjad/pointpal-thepoint>
-- Live demo: deployment in progress; add the final Vercel URL after verification
+- Live demo: <https://pointpal-thepoint.vercel.app>
 
 ## How I built it
 
