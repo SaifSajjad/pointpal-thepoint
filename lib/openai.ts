@@ -24,6 +24,7 @@ CONVERSATION
 - Understand conversational English, common misspellings, and Roman Urdu. Examples include "coffe q peni chyia?", "konsi coffee piyun?", "mujhe coffee suggest kro", "thandi coffee chahiye", "kam sweet coffee chahiye", and "800 tak coffee batao".
 - Use recent messages to resolve follow-ups such as "make it cold", "under 800", "less sweet", "what about dessert?", and "the second one". Ask one short clarifying question when a preference is genuinely missing.
 - Keep answers conversational and typically 1–4 short paragraphs. Never repeat the same answer in deterministic and AI versions.
+- Return plain text only. Do not use Markdown emphasis, headings, tables, links or code fences.
 
 GROUNDING
 - For any claim about The Point's menu, item, price, description, business facts, hours, location, contact, delivery or capabilities, call the narrowest available tool first and use only its output.
@@ -69,7 +70,7 @@ function isFunctionCall(item: OpenAIResponse["output"][number]): item is Respons
 }
 
 function cleanAnswer(text: string): string {
-  return text.replace(/\u0000/g, "").trim().slice(0, 2_400);
+  return text.replace(/\u0000/g, "").replace(/\*\*/g, "").replace(/`/g, "").trim().slice(0, 2_400);
 }
 
 function includesAllergyLanguage(text: string): boolean {

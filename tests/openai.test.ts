@@ -108,6 +108,12 @@ describe("OpenAI-first PointPal agent", () => {
     expect(result?.text).not.toMatch(/completely safe/i);
   });
 
+  it("returns safe plain text instead of visible Markdown markers", async () => {
+    const create = vi.fn<ResponseCreator>().mockResolvedValue(response([], "Try **Iced Spanish** at `Rs. 790`."));
+    const result = await runPointPalAgent("recommend something", [], context, create);
+    expect(result?.text).toBe("Try Iced Spanish at Rs. 790.");
+  });
+
   it("rejects any response that leaks the configured API key", async () => {
     process.env.OPENAI_API_KEY = "sk-test-secret";
     const create = vi.fn<ResponseCreator>().mockResolvedValue(response([], "Here is sk-test-secret"));
