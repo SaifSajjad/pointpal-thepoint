@@ -54,6 +54,16 @@ describe("OpenAI-first PointPal agent", () => {
     expect(JSON.stringify(secondInput)).toContain("function_call_output");
   });
 
+  it("always states both conflicting published schedules in an hours answer", async () => {
+    const create = vi.fn<ResponseCreator>()
+      .mockResolvedValueOnce(response([call("get_business_info", { topic: "hours" })]))
+      .mockResolvedValueOnce(response([], "Published hours differ across The Point’s pages, so please call +92 327 4777957 to confirm."));
+    const result = await runPointPalAgent("What are your opening hours?", [], context, create);
+    expect(result?.text).toContain("8:00 AM");
+    expect(result?.text).toContain("9:00 AM");
+    expect(result?.text).toContain("Published hours differ across The Point’s pages, so please call +92 327 4777957 to confirm.");
+  });
+
   it("grounds Roman Urdu recommendations in verified menu data", async () => {
     const args = { category: "coffee", temperature: "any", max_budget: null, min_budget: null, sweetness: "unknown", exclude_terms: [], limit: 3, preferences: [], previous_item_names: [] };
     const create = vi.fn<ResponseCreator>()
