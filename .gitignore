@@ -1,8 +1,31 @@
+# dependencies
+/node_modules
+
+# Next.js build output
+/.next
+/out
+
+# production and test output
+/build
+/coverage
+
+# local environment variables (keep the example committed)
+.env*
+!.env.example
+
+# Vercel
+.vercel
+
+# logs and editor noise
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.DS_Store
+*.tsbuildinfo
+
+# legacy local caches
 __pycache__/
 *.py[cod]
 .pytest_cache/
-.venv/
-venv/
-.streamlit/secrets.toml
-*.log
-

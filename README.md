@@ -1,122 +1,160 @@
-# PointPal — The Point’s smart FAQ and menu concierge
+# PointPal — The Point’s smart café concierge
 
-PointPal is a polished, no-paid-API conversational assistant built for the **The Point × QD Fellowship — Innovation & AI Track**. It helps customers find verified café information, search the real menu, check list prices, and get recommendations by category and budget in English or basic Roman Urdu.
+PointPal is a production-quality fellowship prototype for **The Point × QD Fellowship — Innovation & AI Track**. It helps visitors browse The Point Café’s public menu, check listed prices, find options by budget or category, and answer practical visit questions in English or Roman Urdu.
 
-> **Live demo:** Pending final Streamlit Community Cloud deployment.
+The application is deliberately grounded: deterministic retrieval owns every business fact, menu item, price and filter decision. When a server-side OpenAI key is available, the model adds a short conversational explanation using only the retrieved fact packet. With no key—or if the API is unavailable—the complete product still works.
 
-![PointPal interface preview](docs/pointpal-preview.png)
+> Fellowship prototype · Information sourced from The Point's public channels.
+
+## Live demo
+
+Deployment in progress. The final Vercel URL will be added here after production verification.
 
 ## Features
 
-- Answers verified opening-hours, location, contact, Instagram, and delivery questions
-- Searches **75 distinct Foodpanda menu items** and their list prices
-- Handles exact item-price queries such as “What is the price of Iced Spanish?”
-- Combines category and budget constraints with AND filtering
-- Recommends coffee, cold drinks, desserts, food, tea, matcha, and more
-- Understands common English and Roman Urdu wording such as `sasti`, `tak`, `se kam`, `kahan`, and `kab`
-- Declines unsupported questions instead of inventing business information
-- Shows a clickable source and price-change caveat with menu answers
-- Requires no API key, paid model, database, or paid hosting
-- Includes desktop and mobile-responsive styling
-
-## How it works
-
-PointPal uses a small, curated knowledge base and deterministic intent matching rather than a paid generative-AI API. The retrieval layer:
-
-1. Normalizes English and Roman Urdu phrasing.
-2. Detects verified café FAQ intents.
-3. Extracts budgets from forms such as `under Rs. 800`, `800 tak`, and `800 se kam`.
-4. Resolves exact menu items before broad categories.
-5. Applies every requested tag and the budget together.
-6. Ranks matching items using only Foodpanda’s public popularity signals and list prices.
-7. Falls back safely when the public sources do not verify an answer.
-
-This keeps the experience fast, transparent, testable, and free to run.
+- 75 structured, verified menu records with list prices and source caveats
+- Exact item-price lookup and bounded typo matching
+- Budget filtering with English and Roman Urdu phrases such as `under`, `within`, `tak`, `se kam` and `ke andar`
+- Composite category filters that preserve every constraint
+- Multiple-turn follow-ups, including “make it cold” while retaining the prior coffee/budget context
+- Grounded hours, address, phone, Instagram and delivery answers
+- Transparent handling of the official hours conflict
+- Conservative unknown handling—unsupported policies and amenities are never guessed
+- Searchable menu, guided three-item recommender and responsive premium café interface
+- Session-only client memory, clear/retry/copy actions and keyboard-accessible controls
+- Server-side OpenAI Responses API enhancement with validation, timeout and failure fallback
+- Request validation, input limits, no-store responses and basic per-client rate limiting
+- Fully functional without an API key
 
 ## Technology
 
-- **Python** — retrieval, intent handling, and menu filtering
-- **Streamlit** — responsive chat interface and free Community Cloud hosting
-- **Standard library only** for the retrieval engine (`dataclasses`, `re`, `difflib`, `unittest`)
-- **Streamlit AppTest** — interface and chat-flow smoke tests
-- **GitHub** — source control and deployment source
+- Next.js 16 App Router
+- React 19 and TypeScript
+- Tailwind CSS 4
+- Next.js Route Handler at `app/api/chat/route.ts`
+- Official OpenAI JavaScript SDK and Responses API
+- Zod request validation
+- Vitest regression suite
+- Vercel hosting
 
-## Run locally
+## Architecture
 
-Requirements: Python 3.10 or newer.
+```text
+Browser UI
+  ├─ responsive React sections and session-only conversation state
+  └─ POST /api/chat
+       ├─ Zod validation + rate limit
+       ├─ deterministic TypeScript retrieval (source of truth)
+       │    ├─ verified business facts
+       │    └─ verified 75-item menu
+       └─ optional OpenAI Responses API enhancement
+            ├─ receives only the grounded fact packet
+            ├─ cannot replace deterministic facts/cards
+            └─ timeout/error/unsafe-output → deterministic fallback
+```
+
+OpenAI is imported only by server code. `OPENAI_API_KEY` is read only through `process.env.OPENAI_API_KEY`; there is no `NEXT_PUBLIC_` key and no secret is sent to the browser.
+
+## Local setup
+
+Requirements: Node.js 20.9 or newer and npm.
 
 ```bash
 git clone https://github.com/SaifSajjad/pointpal-thepoint.git
 cd pointpal-thepoint
-python -m venv .venv
+npm install
+cp .env.example .env.local   # optional; the app works without it
+npm run dev
 ```
 
-Activate the environment:
+Open <http://localhost:3000>.
+
+Quality checks:
 
 ```bash
-# Windows
-.venv\Scripts\activate
-
-# macOS/Linux
-source .venv/bin/activate
+npm test
+npm run lint
+npm run build
 ```
 
-Install and run:
+## Optional OpenAI setup
 
-```bash
-python -m pip install -r requirements.txt
-python -m streamlit run app.py
+Local `.env.local`:
+
+```dotenv
+OPENAI_API_KEY=your_key_here
+OPENAI_MODEL=gpt-5.6-luna
 ```
 
-Open `http://localhost:8501` if it does not open automatically.
+`OPENAI_MODEL` is optional and server-only. Never commit `.env.local` or a real key.
 
-## Tests
+For Vercel:
 
-The suite covers the eight required fellowship demo questions, exact item lookup, category/budget intersections, Roman Urdu variants, unsupported-question safety, source/caveat rendering, menu integrity, and Streamlit chat flows.
+1. Open **Vercel Project → Settings → Environment Variables**.
+2. Add `OPENAI_API_KEY` for Production, Preview and Development as needed.
+3. Optionally add `OPENAI_MODEL`.
+4. Redeploy the latest production deployment.
 
-```bash
-python -m unittest discover -s tests -v
-```
+The no-key deterministic mode is intentional and complete. API failures or timeouts automatically return the same grounded fallback answer.
 
 ## Verified data sources
 
-- [The Point official website](https://www.thepoint.cafe/) — hours, address, and phone number
-- [The Point on Foodpanda](https://www.foodpanda.pk/restaurant/vb7p/the-point-vb7p) — menu, list prices, popularity badges, delivery, and pick-up
-- [@thepointlhr on Instagram](https://www.instagram.com/thepointlhr/) — official public social profile
+Source order:
 
-The menu snapshot was checked on **13 July 2026**. PointPal uses undiscounted Foodpanda list prices because temporary promotions change. Prices, promotions, availability, and in-store prices may change.
+1. [Official website](https://www.thepoint.cafe/)
+2. [Official menu page](https://www.thepoint.cafe/menu)
+3. [Official Instagram](https://www.instagram.com/thepointlhr/)
+4. [Foodpanda listing](https://www.foodpanda.pk/restaurant/vb7p/the-point-vb7p)
 
-The official site currently contains conflicting hours: its global footer says **8:00 AM–1:00 AM**, while the Phase 6 outlet listing says **9:00 AM–12:00 AM (Mon–Sun)**. PointPal discloses both and recommends calling or checking Instagram before visiting.
+Menu list prices were checked on **13 July 2026**. Every price surface says: **“Listed price · may change or differ in-store.”**
+
+The official homepage/footer lists `8:00 AM–1:00 AM`, while the Phase 6 location page lists `9:00 AM–12:00 AM`. PointPal displays the homepage/footer timing in the visit section, labels the conflict in chat, and says: **“Hours may vary; call to confirm.”**
+
+## Tests and safety policy
+
+The suite covers:
+
+- all eight fellowship demo prompts
+- 75-item completeness and uniqueness
+- exact price lookup and typo matching
+- English and Roman Urdu budgets
+- composite constraints and zero-budget behavior
+- hours conflict, address, phone and delivery grounding
+- unsupported questions and prompt injection
+- multi-turn context
+- absent OpenAI key and OpenAI request failure
+- ungrounded model-output rejection
+- API validation and abuse protection
+
+Browser QA covers desktop and 390×844 mobile layouts, structural overflow, console errors, price caveats and the complete demo conversation.
 
 ## Project structure
 
 ```text
-pointpal-thepoint/
-├── .streamlit/config.toml   # Theme and deployment-safe settings
-├── app.py                   # Streamlit UI
-├── pointpal.py              # Pure retrieval and menu logic
-├── requirements.txt         # Runtime dependency
-├── tests/
-│   ├── test_app.py          # Streamlit UI smoke tests
-│   └── test_pointpal.py     # Retrieval regression tests
-├── docs/pointpal-preview.png
-├── SUBMISSION.md            # Form copy, demo script, and checklist
-└── README.md
+app/
+  api/chat/route.ts      # server-only chat route
+  globals.css            # Tailwind theme and brand styling
+  layout.tsx
+  page.tsx
+components/              # reusable page and product sections
+data/
+  business.ts            # verified business facts and source URLs
+  menu.ts                # structured 75-item menu
+lib/
+  openai.ts              # server-only optional enhancement
+  pointpal.ts            # deterministic retrieval and filtering
+  types.ts
+tests/                    # behavioral, safety and route tests
 ```
 
-## Screenshot
+## Preview
 
-The image above is captured from the tested local Streamlit build at a 1280 × 720 browser viewport. The app was also checked at a 390 × 844 mobile viewport with no horizontal overflow.
+The interface is designed around The Point’s muted sage, warm ivory, coffee brown and terracotta visual language, with hand-drawn café illustration, responsive editorial sections, and a prominent concierge panel. Open the live demo for the current desktop and mobile experience.
 
 ## Future improvements
 
-- Move the curated menu into a live owner-managed Google Sheet or CMS
-- Add dietary and allergen fields once The Point provides verified data
-- Add multilingual Urdu-script support
-- Connect the same retrieval layer to Instagram DMs or WhatsApp
-- Add live stock/availability and location-aware delivery estimates
-- Track anonymous question categories to improve FAQ coverage without storing chat content
-
-## Responsible-answering notes
-
-PointPal does not claim unverified facilities, dietary options, ingredients, or availability. Questions outside the public knowledge base receive a transparent fallback and can be confirmed with The Point directly.
+- café-managed source refresh workflow with change review
+- richer verified dietary metadata supplied directly by The Point
+- opt-in analytics for unanswered intents without storing conversation content
+- bilingual Urdu-script interface
+- official photography and logo assets with explicit production approval
