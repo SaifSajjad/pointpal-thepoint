@@ -219,7 +219,7 @@ function faqReply(question: string): GroundedReply | null {
     containsPhrase(query, ["opening time", "closing time", "what time", "kitne baje", "kab khul", "kab band", "open kab", "close kab"])
   ) {
     return makeReply(
-      `The official website shows ${BUSINESS.hoursFooter} in its homepage/footer, while the Phase 6 location page lists ${BUSINESS.hoursLocation}. Hours may vary; call ${BUSINESS.phone} to confirm before visiting.`,
+      `The official website shows ${BUSINESS.hoursFooter} in its homepage/footer, while the Phase 6 location page lists ${BUSINESS.hoursLocation}. Published hours differ across The Point’s pages, so please call ${BUSINESS.phone} to confirm. Hours may vary; call before visiting.`,
       "hours",
       { sourceLabel: "Official website · conflicting listings", sourceUrl: `${WEBSITE_URL}location` },
     );
@@ -330,6 +330,24 @@ export function answer(
     return makeReply(
       "Ask me about The Point’s menu, listed prices, hours, location, contact or delivery.",
       "empty",
+    );
+  }
+
+  const conversationalQuery = normalize(question);
+  if (/^(hi+|hello|hey|salam|assalam|aoa)( there)?$/.test(conversationalQuery)) {
+    const greeting = /salam|assalam|aoa/.test(conversationalQuery) ? "Wa alaikum assalam!" : "Hi!";
+    return makeReply(`${greeting} I’m PointPal. What kind of coffee, food, or dessert are you in the mood for?`, "conversation");
+  }
+  if (/^(thanks|thank you|shukriya|thx|ty|great|perfect|okay|ok|acha|theek)( pointpal)?$/.test(conversationalQuery)) {
+    return makeReply("You’re welcome! Enjoy your visit to The Point.", "conversation");
+  }
+  if (
+    /^(help|what can you do|how can you help|menu help)$/.test(conversationalQuery) ||
+    containsPhrase(conversationalQuery, ["what do you know", "kis cheez mein help"])
+  ) {
+    return makeReply(
+      "I can search verified menu items and prices, recommend options by budget or preference, and help with The Point’s location, contact, hours, and delivery. English or Roman Urdu both work.",
+      "help",
     );
   }
 

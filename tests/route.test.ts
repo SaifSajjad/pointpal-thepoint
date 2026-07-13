@@ -1,77 +1,63 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { interpretQuestion } = vi.hoisted(() => ({
-  interpretQuestion: vi.fn(),
-}));
-vi.mock("@/lib/openai", () => ({ interpretQuestion }));
+const { runPointPalAgent } = vi.hoisted(() => ({ runPointPalAgent: vi.fn() }));
+vi.mock("@/lib/openai", () => ({ runPointPalAgent }));
 
 import { POST } from "@/app/api/chat/route";
 
 function request(body: unknown, ip: string, contentType = "application/json") {
   return new Request("http://localhost/api/chat", {
-    method: "POST",
-    headers: { "Content-Type": contentType, "x-forwarded-for": ip },
-    body: JSON.stringify(body),
+    method: "POST", headers: { "Content-Type": contentType, "x-forwarded-for": ip }, body: JSON.stringify(body),
   });
 }
 
+const aiReply = {
+  text: "Hi! What kind of coffee are you in the mood for?", sourceLabel: "", sourceUrl: "",
+  intent: "conversation", items: [], budget: null,
+  context: { tags: [], budget: null, lastIntent: "conversation" }, mode: "ai",
+};
+
 describe("POST /api/chat", () => {
-  beforeEach(() => {
-    interpretQuestion.mockReset();
-    interpretQuestion.mockResolvedValue(null);
-  });
+  beforeEach(() => { runPointPalAgent.mockReset(); runPointPalAgent.mockResolvedValue(aiReply); });
 
-  it("returns one deterministic location answer without a duplicate AI note", async () => {
+  it("uses the agent first even for a known FAQ", async () => {
+    const location = { ...aiReply, text: "The Point is at 290 MB, Sector H, DHA Phase 6, Lahore, Pakistan.", sourceLabel: "Official website", sourceUrl: "https://www.thepoint.cafe/", intent: "location" };
+    runPointPalAgent.mockResolvedValueOnce(location);
     const response = await POST(request({ message: "Where are you located?", messages: [] }, "10.0.0.1"));
-    const payload = await response.json();
     expect(response.status).toBe(200);
-    expect(payload.mode).toBe("fallback");
-    expect(payload.text).toBe("The Point is at 290 MB, Sector H, DHA Phase 6, Lahore, Pakistan.");
-    expect(payload).not.toHaveProperty("aiNote");
-    expect(interpretQuestion).not.toHaveBeenCalled();
+    expect(await response.json()).toMatchObject({ mode: "ai", intent: "location", text: location.text });
+    expect(runPointPalAgent).toHaveBeenCalledOnce();
   });
 
-  it("uses validated AI intent only to re-enter the deterministic engine", async () => {
-    interpretQuestion.mockResolvedValueOnce("Recommend coffee");
-    const response = await POST(request({ message: "coffe q peni chyia?", messages: [] }, "10.0.0.2"));
+  it("returns one unified agent response", async () => {
+    const response = await POST(request({ message: "hi", messages: [] }, "10.0.0.2"));
     const payload = await response.json();
-    expect(payload.intent).toBe("recommendation");
-    expect(payload.mode).toBe("ai");
-    expect(payload.items.length).toBeGreaterThan(0);
-    expect(payload.items.every((item: { tags: string[] }) => item.tags.includes("coffee"))).toBe(true);
+    expect(payload.text).toBe(aiReply.text);
     expect(payload).not.toHaveProperty("aiNote");
   });
 
-  it("can recover an unclear FAQ through validated AI intent", async () => {
-    interpretQuestion.mockResolvedValueOnce("What are your opening hours?");
-    const response = await POST(request({ message: "When can I swing by?", messages: [] }, "10.0.0.5"));
-    const payload = await response.json();
-    expect(payload.intent).toBe("hours");
-    expect(payload.text).toContain("Hours may vary; call");
-    expect(payload.mode).toBe("ai");
-  });
-
-  it("keeps the deterministic recommendation when AI times out", async () => {
-    interpretQuestion.mockRejectedValueOnce(new Error("timeout"));
+  it.each(["timeout", "rate_limit"])("falls back deterministically when the agent fails with %s", async (failure) => {
+    runPointPalAgent.mockRejectedValueOnce(new Error(failure));
     const response = await POST(request({ message: "800 tak koi coffee batao", messages: [] }, "10.0.0.6"));
     const payload = await response.json();
-    expect(payload.intent).toBe("recommendation");
-    expect(payload.mode).toBe("fallback");
+    expect(payload).toMatchObject({ intent: "recommendation", mode: "fallback" });
     expect(payload.items.every((item: { price: number }) => item.price <= 800)).toBe(true);
   });
 
+  it("falls back naturally when no OpenAI key exists", async () => {
+    runPointPalAgent.mockResolvedValueOnce(null);
+    const response = await POST(request({ message: "hi", messages: [] }, "10.0.0.7"));
+    expect(await response.json()).toMatchObject({ intent: "conversation", mode: "fallback" });
+  });
+
   it("validates content type and input length", async () => {
-    const wrongType = await POST(request({ message: "hello" }, "10.0.0.3", "text/plain"));
-    expect(wrongType.status).toBe(415);
-    const tooLong = await POST(request({ message: "x".repeat(601) }, "10.0.0.4"));
-    expect(tooLong.status).toBe(400);
+    expect((await POST(request({ message: "hello" }, "10.0.0.3", "text/plain"))).status).toBe(415);
+    expect((await POST(request({ message: "x".repeat(601) }, "10.0.0.4"))).status).toBe(400);
   });
 
   it("applies basic per-client abuse protection", async () => {
     let response: Response | undefined;
-    for (let index = 0; index < 16; index += 1) {
-      response = await POST(request({ message: "Where are you located?" }, "10.0.0.99"));
-    }
+    for (let index = 0; index < 16; index += 1) response = await POST(request({ message: "hi" }, "10.0.0.99"));
     expect(response?.status).toBe(429);
     expect(response?.headers.get("Retry-After")).toBe("60");
   });

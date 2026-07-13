@@ -30,7 +30,7 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 96px;
+  scroll-padding-top: 80px;
 }
 
 body {
@@ -50,7 +50,8 @@ body {
 
 a,
 button,
-input {
+input,
+textarea {
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -59,6 +60,10 @@ button:focus-visible,
 input:focus-visible {
   outline: 3px solid #efb07a;
   outline-offset: 3px;
+}
+
+textarea:focus-visible {
+  outline: none;
 }
 
 .site-container {

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { interpretQuestion } from "@/lib/openai";
-import { answer, needsIntentInterpretation } from "@/lib/pointpal";
+import { runPointPalAgent } from "@/lib/openai";
+import { answer } from "@/lib/pointpal";
 import type { ChatResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -26,6 +26,9 @@ const requestSchema = z.object({
       lastIntent: z
         .enum([
           "empty",
+          "conversation",
+          "help",
+          "general_guidance",
           "location",
           "hours",
           "contact",
@@ -91,28 +94,26 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   const { message, messages, context } = parsed.data;
-  let grounded = answer(message, context);
-  let usedAiIntent = false;
   try {
-    if (grounded.intent === "unknown" || needsIntentInterpretation(message)) {
-      const interpreted = await interpretQuestion(message, messages);
-      if (interpreted) {
-        const interpretedReply = answer(`${interpreted} ${message}`, context);
-        if (interpretedReply.intent !== "unknown") {
-          grounded = interpretedReply;
-          usedAiIntent = true;
-        }
-      }
+    const agentReply = await runPointPalAgent(message, messages, context);
+    if (agentReply) {
+      return NextResponse.json(agentReply, {
+        headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" },
+      });
     }
   } catch (error) {
-    console.warn("PointPal OpenAI intent interpretation failed; deterministic fallback served.", {
+    console.warn("PointPal agent unavailable; deterministic fallback served.", {
       name: error instanceof Error ? error.name : "UnknownError",
     });
   }
 
+  const grounded = answer(message, context);
+  if (grounded.intent === "unknown") {
+    grounded.text = "PointPal is having a little trouble thinking right now, but I can still help with menu items, prices, hours and location.";
+  }
   const response: ChatResponse = {
     ...grounded,
-    mode: usedAiIntent ? "ai" : "fallback",
+    mode: "fallback",
   };
   return NextResponse.json(response, {
     headers: {

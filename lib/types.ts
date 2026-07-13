@@ -9,6 +9,9 @@ export type MenuItem = {
 
 export type ReplyIntent =
   | "empty"
+  | "conversation"
+  | "help"
+  | "general_guidance"
   | "location"
   | "hours"
   | "contact"

@@ -1,23 +1,13 @@
-import { About } from "@/components/About";
 import { ChatPanel } from "@/components/ChatPanel";
 import { Footer } from "@/components/Footer";
-import { Hero } from "@/components/Hero";
-import { MenuDiscovery } from "@/components/MenuDiscovery";
 import { Navigation } from "@/components/Navigation";
-import { RecommendationFlow } from "@/components/RecommendationFlow";
-import { Visit } from "@/components/Visit";
 
 export default function Home() {
   return (
     <>
       <Navigation />
-      <main>
-        <Hero />
+      <main className="bg-[radial-gradient(circle_at_top_left,rgba(239,176,122,.22),transparent_34%),linear-gradient(180deg,#ece5db,#f7f2e9)] px-0 py-5 sm:py-7">
         <ChatPanel />
-        <MenuDiscovery />
-        <RecommendationFlow />
-        <About />
-        <Visit />
       </main>
       <Footer />
     </>
