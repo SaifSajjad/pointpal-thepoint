@@ -1,10 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { enhanceReply, interpretUnknownQuestion } = vi.hoisted(() => ({
-  enhanceReply: vi.fn(),
-  interpretUnknownQuestion: vi.fn(),
+const { interpretQuestion } = vi.hoisted(() => ({
+  interpretQuestion: vi.fn(),
 }));
-vi.mock("@/lib/openai", () => ({ enhanceReply, interpretUnknownQuestion }));
+vi.mock("@/lib/openai", () => ({ interpretQuestion }));
 
 import { POST } from "@/app/api/chat/route";
 
@@ -18,37 +17,47 @@ function request(body: unknown, ip: string, contentType = "application/json") {
 
 describe("POST /api/chat", () => {
   beforeEach(() => {
-    enhanceReply.mockReset();
-    interpretUnknownQuestion.mockReset();
-    interpretUnknownQuestion.mockResolvedValue(null);
+    interpretQuestion.mockReset();
+    interpretQuestion.mockResolvedValue(null);
   });
 
-  it("returns the deterministic answer when AI is unavailable", async () => {
-    enhanceReply.mockRejectedValueOnce(new Error("timeout"));
+  it("returns one deterministic location answer without a duplicate AI note", async () => {
     const response = await POST(request({ message: "Where are you located?", messages: [] }, "10.0.0.1"));
     const payload = await response.json();
     expect(response.status).toBe(200);
     expect(payload.mode).toBe("fallback");
-    expect(payload.text).toContain("290 MB, Sector H");
-  });
-
-  it("marks a successful grounded enhancement as AI mode", async () => {
-    enhanceReply.mockResolvedValueOnce("A warm pick for the mood you described.");
-    const response = await POST(request({ message: "Recommend something cold", messages: [] }, "10.0.0.2"));
-    const payload = await response.json();
-    expect(payload.mode).toBe("ai");
-    expect(payload.aiNote).toContain("warm pick");
-    expect(payload.items.length).toBeGreaterThan(0);
+    expect(payload.text).toBe("The Point is at 290 MB, Sector H, DHA Phase 6, Lahore, Pakistan.");
+    expect(payload).not.toHaveProperty("aiNote");
+    expect(interpretQuestion).not.toHaveBeenCalled();
   });
 
   it("uses validated AI intent only to re-enter the deterministic engine", async () => {
-    interpretUnknownQuestion.mockResolvedValueOnce("What are your opening hours?");
-    enhanceReply.mockResolvedValueOnce("Here’s the public timing context.");
+    interpretQuestion.mockResolvedValueOnce("Recommend coffee");
+    const response = await POST(request({ message: "coffe q peni chyia?", messages: [] }, "10.0.0.2"));
+    const payload = await response.json();
+    expect(payload.intent).toBe("recommendation");
+    expect(payload.mode).toBe("ai");
+    expect(payload.items.length).toBeGreaterThan(0);
+    expect(payload.items.every((item: { tags: string[] }) => item.tags.includes("coffee"))).toBe(true);
+    expect(payload).not.toHaveProperty("aiNote");
+  });
+
+  it("can recover an unclear FAQ through validated AI intent", async () => {
+    interpretQuestion.mockResolvedValueOnce("What are your opening hours?");
     const response = await POST(request({ message: "When can I swing by?", messages: [] }, "10.0.0.5"));
     const payload = await response.json();
     expect(payload.intent).toBe("hours");
     expect(payload.text).toContain("Hours may vary; call");
     expect(payload.mode).toBe("ai");
+  });
+
+  it("keeps the deterministic recommendation when AI times out", async () => {
+    interpretQuestion.mockRejectedValueOnce(new Error("timeout"));
+    const response = await POST(request({ message: "800 tak koi coffee batao", messages: [] }, "10.0.0.6"));
+    const payload = await response.json();
+    expect(payload.intent).toBe("recommendation");
+    expect(payload.mode).toBe("fallback");
+    expect(payload.items.every((item: { price: number }) => item.price <= 800)).toBe(true);
   });
 
   it("validates content type and input length", async () => {
@@ -59,7 +68,6 @@ describe("POST /api/chat", () => {
   });
 
   it("applies basic per-client abuse protection", async () => {
-    enhanceReply.mockResolvedValue(null);
     let response: Response | undefined;
     for (let index = 0; index < 16; index += 1) {
       response = await POST(request({ message: "Where are you located?" }, "10.0.0.99"));

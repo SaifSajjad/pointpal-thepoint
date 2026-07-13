@@ -14,6 +14,7 @@ export type ReplyIntent =
   | "contact"
   | "instagram"
   | "delivery"
+  | "allergy"
   | "item_lookup"
   | "recommendation"
   | "no_match"
@@ -43,5 +44,4 @@ export type ChatMessage = {
 
 export type ChatResponse = GroundedReply & {
   mode: "ai" | "fallback";
-  aiNote?: string;
 };

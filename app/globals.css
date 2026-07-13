@@ -30,7 +30,7 @@
 
 html {
   scroll-behavior: smooth;
-  scroll-padding-top: 90px;
+  scroll-padding-top: 96px;
 }
 
 body {
@@ -225,6 +225,8 @@ input:focus-visible {
 }
 
 .chat-scroll {
+  overflow-anchor: none;
+  scroll-padding-bottom: 1rem;
   scrollbar-color: rgba(112, 130, 95, 0.42) transparent;
   scrollbar-width: thin;
 }

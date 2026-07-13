@@ -3,7 +3,7 @@ import { MENU } from "@/data/menu";
 import type { ConversationContext, GroundedReply, MenuItem, ReplyIntent } from "@/lib/types";
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
-  coffee: ["coffee", "coffees", "cofee", "coffi"],
+  coffee: ["coffee", "coffees", "coffe", "cofee", "coffi", "cafi"],
   cold: ["cold", "chilled", "iced", "thanda", "thandi", "thanday"],
   hot: ["hot", "warm", "garam"],
   dessert: ["dessert", "desserts", "sweet", "sweets", "meetha", "meethi", "mithai"],
@@ -52,6 +52,27 @@ const RECOMMEND_WORDS = [
   "koi acha",
   "koi achi",
   "koi achha",
+  "konsi",
+  "kaunsi",
+  "piyun",
+  "peeni chahiye",
+  "peni chahiye",
+  "peni chyia",
+  "chahiye",
+  "chahye",
+  "chyia",
+  "batao",
+  "btao",
+  "achi ha",
+];
+
+const LOW_SWEETNESS_PHRASES = [
+  "not too sweet",
+  "less sweet",
+  "low sweet",
+  "kam meetha",
+  "kam sweet",
+  "meetha kam",
 ];
 
 const STOP_WORDS = new Set([
@@ -102,7 +123,7 @@ export function requestedTags(question: string): string[] {
   const tags = Object.entries(CATEGORY_ALIASES)
     .filter(([, aliases]) => containsPhrase(query, aliases))
     .map(([tag]) => tag);
-  const lowSweetness = containsPhrase(query, ["not too sweet", "less sweet", "low sweet", "kam meetha"]);
+  const lowSweetness = containsPhrase(query, LOW_SWEETNESS_PHRASES);
   const explicitDessert = containsPhrase(query, ["dessert", "desserts", "meetha", "meethi", "mithai", "cake", "brownie", "cookie", "croissant"]);
   return lowSweetness && !explicitDessert ? tags.filter((tag) => tag !== "dessert") : tags;
 }
@@ -124,7 +145,12 @@ function mentionedItem(question: string): MenuItem | null {
 function rank(items: MenuItem[], valueFirst = false, lowSweetness = false): MenuItem[] {
   return [...items].sort((a, b) => {
     if (lowSweetness) {
-      const sweetness = Number(a.tags.includes("sweet")) - Number(b.tags.includes("sweet"));
+      const sweetnessTerms = ["sweet", "chocolate", "condensed", "syrup", "caramel", "hazelnut", "vanilla", "cookie", "biscoff", "nutella"];
+      const sweetnessScore = (item: MenuItem) => {
+        const text = normalize([item.name, item.description, ...item.tags].join(" "));
+        return sweetnessTerms.filter((term) => containsPhrase(text, [term])).length;
+      };
+      const sweetness = sweetnessScore(a) - sweetnessScore(b);
       if (sweetness) return sweetness;
     }
     if (valueFirst && a.price !== b.price) return a.price - b.price;
@@ -165,6 +191,17 @@ function faqReply(question: string): GroundedReply | null {
   const query = normalize(question);
   const tokens = new Set(query.split(" "));
   const hasAny = (values: string[]) => values.some((value) => tokens.has(value));
+
+  if (
+    hasAny(["allergy", "allergies", "allergic", "allergen", "allergens", "nut", "nuts"]) ||
+    containsPhrase(query, ["cross contamination", "cross-contamination", "food allergy", "allergy safe"])
+  ) {
+    return makeReply(
+      "I can’t confirm allergy safety from the public menu. Please ask café staff to verify the ingredients and cross-contamination risk before ordering.",
+      "allergy",
+      { sourceLabel: "Safety guidance · confirm with café staff", sourceUrl: WEBSITE_URL },
+    );
+  }
 
   if (
     hasAny(["delivery", "deliver", "foodpanda"]) ||
@@ -329,7 +366,7 @@ export function answer(
   const candidates = filterMenu(tags, budget);
   const cheap = containsPhrase(query, CHEAP_WORDS);
   const recommend = cheap || containsPhrase(query, RECOMMEND_WORDS);
-  const lowSweetness = containsPhrase(query, ["not too sweet", "less sweet", "low sweet", "kam meetha"]);
+  const lowSweetness = containsPhrase(query, LOW_SWEETNESS_PHRASES);
 
   if (tags.length || budget !== null) {
     if (!candidates.length) {
@@ -349,11 +386,13 @@ export function answer(
     const ranked = rank(candidates, cheap, lowSweetness).slice(0, 5);
     const scope = tags.length ? tags.join(" ") : "menu";
     const budgetText = budget !== null ? ` within ${money(budget)}` : "";
-    const intro = cheap
-      ? `Here are the best-value ${scope} options${budgetText}.`
-      : recommend
-        ? `Here are a few strong ${scope} picks${budgetText}.`
-        : `These ${scope} options match${budgetText}.`;
+    const intro = lowSweetness
+      ? `The public menu does not list sweetness levels. These ${scope} options match your other preferences${budgetText}; please ask café staff to help choose the least-sweet option.`
+      : cheap
+        ? `Here are the best-value ${scope} options${budgetText}.`
+        : recommend
+          ? `Here are a few strong ${scope} picks${budgetText}.`
+          : `These ${scope} options match${budgetText}.`;
     return makeReply(intro, "recommendation", { items: ranked, budget, tags });
   }
 
@@ -377,4 +416,23 @@ export function answer(
     "I couldn’t verify that from The Point’s public sources, so I don’t want to guess. I can help with menu items and prices, recommendations by budget, opening hours, location, contact, Instagram and delivery. Try “Cold coffee under Rs. 800.”",
     "unknown",
   );
+}
+
+export function needsIntentInterpretation(question: string): boolean {
+  const query = normalize(question);
+  return containsPhrase(query, [
+    "coffe",
+    "cofee",
+    "konsi",
+    "kaunsi",
+    "piyun",
+    "peeni",
+    "peni",
+    "chahiye",
+    "chahye",
+    "chyia",
+    "batao",
+    "btao",
+    "suggest kro",
+  ]);
 }

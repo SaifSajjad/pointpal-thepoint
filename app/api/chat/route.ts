@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { enhanceReply, interpretUnknownQuestion } from "@/lib/openai";
-import { answer } from "@/lib/pointpal";
+import { interpretQuestion } from "@/lib/openai";
+import { answer, needsIntentInterpretation } from "@/lib/pointpal";
 import type { ChatResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -31,6 +31,7 @@ const requestSchema = z.object({
           "contact",
           "instagram",
           "delivery",
+          "allergy",
           "item_lookup",
           "recommendation",
           "no_match",
@@ -91,23 +92,27 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const { message, messages, context } = parsed.data;
   let grounded = answer(message, context);
-  let aiNote: string | null = null;
+  let usedAiIntent = false;
   try {
-    if (grounded.intent === "unknown") {
-      const interpreted = await interpretUnknownQuestion(message, messages);
-      if (interpreted) grounded = answer(interpreted, context);
+    if (grounded.intent === "unknown" || needsIntentInterpretation(message)) {
+      const interpreted = await interpretQuestion(message, messages);
+      if (interpreted) {
+        const interpretedReply = answer(`${interpreted} ${message}`, context);
+        if (interpretedReply.intent !== "unknown") {
+          grounded = interpretedReply;
+          usedAiIntent = true;
+        }
+      }
     }
-    aiNote = await enhanceReply(message, grounded, messages);
   } catch (error) {
-    console.warn("PointPal OpenAI enhancement failed; deterministic fallback served.", {
+    console.warn("PointPal OpenAI intent interpretation failed; deterministic fallback served.", {
       name: error instanceof Error ? error.name : "UnknownError",
     });
   }
 
   const response: ChatResponse = {
     ...grounded,
-    mode: aiNote ? "ai" : "fallback",
-    ...(aiNote ? { aiNote } : {}),
+    mode: usedAiIntent ? "ai" : "fallback",
   };
   return NextResponse.json(response, {
     headers: {

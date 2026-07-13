@@ -63,6 +63,7 @@ export function ChatPanel() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const paneRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -96,7 +97,7 @@ export function ChatPanel() {
         {
           id: `assistant-${Date.now()}`,
           role: "assistant",
-          content: [payload.aiNote, payload.text].filter(Boolean).join("\n\n"),
+          content: payload.text,
           response: payload,
         },
       ]);
@@ -104,7 +105,10 @@ export function ChatPanel() {
       setError(caught instanceof Error ? caught.message : "PointPal could not answer just now.");
     } finally {
       setLoading(false);
-      window.setTimeout(() => inputRef.current?.focus(), 50);
+      window.setTimeout(() => {
+        paneRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
+        inputRef.current?.focus({ preventScroll: true });
+      }, 50);
     }
   }, [context, history, loading]);
 
@@ -118,8 +122,16 @@ export function ChatPanel() {
   }, [send]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [messages, loading]);
+    const frame = window.requestAnimationFrame(() => {
+      const thread = scrollRef.current;
+      if (!thread) return;
+      thread.scrollTo({
+        top: thread.scrollHeight,
+        behavior: messages.length <= 2 ? "auto" : "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages.length]);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -131,7 +143,7 @@ export function ChatPanel() {
     setContext(INITIAL_CONTEXT);
     setInput("");
     setError("");
-    inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
   }
 
   function retry() {
@@ -148,7 +160,7 @@ export function ChatPanel() {
   }
 
   return (
-    <section id="ask" className="relative z-20 -mt-20 scroll-mt-28 pb-20 lg:-mt-28">
+    <section className="relative z-20 pb-20">
       <div className="site-container">
         <div className="overflow-hidden rounded-[32px] border border-coffee/10 bg-light shadow-[0_28px_80px_rgba(74,45,24,.16)]">
           <div className="grid lg:grid-cols-[.38fr_.62fr]">
@@ -174,8 +186,8 @@ export function ChatPanel() {
               </div>
             </div>
 
-            <div className="flex min-h-[630px] flex-col bg-soft-cream">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-coffee/10 px-5 py-4 sm:px-7">
+            <div id="ask" ref={paneRef} className="flex h-[calc(100dvh-112px)] min-h-[520px] max-h-[720px] scroll-mt-0 flex-col bg-soft-cream">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-coffee/10 px-5 py-4 sm:px-7">
                 <div>
                   <p className="font-display text-xl text-coffee">Conversation</p>
                   <p className="text-[11px] font-semibold text-coffee/45">Verified answers · session-only memory</p>
@@ -189,7 +201,7 @@ export function ChatPanel() {
                 </div>
               </div>
 
-              <div ref={scrollRef} data-testid="chat-thread" className="chat-scroll flex-1 space-y-5 overflow-y-auto px-4 py-6 sm:px-7" aria-live="polite">
+              <div ref={scrollRef} data-testid="chat-thread" className="chat-scroll min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-4 py-6 sm:px-7" aria-live="polite">
                 {messages.map((message) => (
                   <div key={message.id} data-message-role={message.role} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                     <div className={`max-w-[92%] rounded-[22px] px-4 py-3.5 sm:max-w-[82%] ${message.role === "user" ? "rounded-br-md bg-sage text-white" : "rounded-bl-md border border-coffee/10 bg-light text-coffee shadow-sm"}`}>
@@ -198,7 +210,7 @@ export function ChatPanel() {
                       {message.response?.sourceUrl && (
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-coffee/8 pt-2.5 text-[10px] font-semibold text-coffee/45">
                           <a href={message.response.sourceUrl} target="_blank" rel="noreferrer" className="underline decoration-coffee/20 underline-offset-2 hover:text-sage">Source: {message.response.sourceLabel}</a>
-                          <span>{message.response.mode === "ai" ? "AI-assisted · grounded" : "Verified fallback"}</span>
+                          <span>{message.response.mode === "ai" ? "AI-interpreted · verified" : "Verified response"}</span>
                         </div>
                       )}
                     </div>
@@ -217,7 +229,7 @@ export function ChatPanel() {
                 )}
               </div>
 
-              <form onSubmit={submit} className="sticky bottom-0 border-t border-coffee/10 bg-light/95 p-4 backdrop-blur-sm sm:p-5">
+              <form onSubmit={submit} className="shrink-0 border-t border-coffee/10 bg-light/95 p-4 backdrop-blur-sm sm:p-5">
                 <label htmlFor="pointpal-input" className="sr-only">Ask PointPal</label>
                 <div className="flex items-center gap-2 rounded-full border border-coffee/15 bg-white p-1.5 pl-4 shadow-[0_8px_24px_rgba(74,45,24,.07)] focus-within:border-sage focus-within:ring-4 focus-within:ring-sage/10">
                   <input ref={inputRef} id="pointpal-input" value={input} onChange={(event) => setInput(event.target.value)} maxLength={600} placeholder="Ask about coffee, prices, hours…" className="min-w-0 flex-1 bg-transparent py-2 text-base text-coffee outline-none placeholder:text-coffee/38" />

@@ -116,6 +116,40 @@ describe("business FAQs and Roman Urdu", () => {
     expect(answer(question).intent).toBe(intent);
   });
 
+  it.each([
+    "coffe q peni chyia?",
+    "coffee q peeni chahiye?",
+    "konsi coffee piyun?",
+    "mujhe coffee suggest kro",
+    "koi achi coffee batao",
+  ])("understands a conversational coffee request: %s", (question) => {
+    const reply = answer(question);
+    expect(reply.intent).toBe("recommendation");
+    expect(reply.items.length).toBeGreaterThan(0);
+    expect(reply.items.every((item) => item.tags.includes("coffee"))).toBe(true);
+  });
+
+  it.each([
+    ["konsi cold coffee achi ha?", ["coffee", "cold"]],
+    ["thandi coffee chahiye", ["coffee", "cold"]],
+    ["800 tak coffee batao", ["coffee"]],
+    ["kam sweet coffee chahiye", ["coffee"]],
+  ])("preserves constraints for: %s", (question, tags) => {
+    const reply = answer(question);
+    expect(reply.intent).toBe("recommendation");
+    expect(reply.items.length).toBeGreaterThan(0);
+    expect(reply.items.every((item) => (tags as string[]).every((tag) => item.tags.includes(tag)))).toBe(true);
+  });
+
+  it("treats allergy safety as a staff-confirmation question, never a menu search", () => {
+    const reply = answer("I have a nut allergy, is this safe?");
+    expect(reply.intent).toBe("allergy");
+    expect(reply.items).toEqual([]);
+    expect(reply.text).toContain("can’t confirm allergy safety");
+    expect(reply.text).toContain("ingredients and cross-contamination");
+    expect(reply.sourceLabel).toContain("confirm with café staff");
+  });
+
   it("handles empty input", () => {
     const reply = answer("   ");
     expect(reply.intent).toBe("empty");
