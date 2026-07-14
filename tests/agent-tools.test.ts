@@ -23,6 +23,19 @@ describe("validated PointPal tools", () => {
     expect(result.items.every((item) => item.tags.includes("cold") && item.price <= 800)).toBe(true);
   });
 
+  it("does not treat Roman Urdu value words as literal menu ingredients", () => {
+    const result = executePointPalTool("recommend_menu", JSON.stringify({
+      ...base,
+      category: "coffee",
+      preferences: ["sasti"],
+      previous_item_names: [],
+      candidate_scope: "menu",
+      sort: "price_asc",
+    }));
+    expect(result.items.length).toBeGreaterThan(0);
+    expect(result.items[0]).toMatchObject({ name: "Espresso", price: 550 });
+  });
+
   it("finds Iced Spanish and its verified price", () => {
     const result = executePointPalTool("get_menu_item", JSON.stringify({ item_name: "Iced Spanish" }));
     expect(result.items[0]).toMatchObject({ name: "Iced Spanish", price: 790 });

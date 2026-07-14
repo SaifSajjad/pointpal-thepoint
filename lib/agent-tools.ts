@@ -281,7 +281,7 @@ export function executePointPalTool(
   const recommendationArgs = name === "recommend_menu" ? parsed.data as z.infer<typeof schemas.recommend_menu> : null;
   const requestedPreferences = recommendationArgs?.preferences ?? (rawArgs.query ? [rawArgs.query] : previous.preferences);
   const positivePreferences = requestedPreferences.filter((preference) =>
-    !/cheap|cheapest|popular|best|recommend|less sweet|low sweet|kam sweet/i.test(preference),
+    !/cheap|cheapest|sasti|sasta|saste|popular|best|achi|acha|recommend|suggest|batao|bata|kro|karo|less sweet|low sweet|kam sweet/i.test(preference),
   );
   if (!effective.query && positivePreferences.length) effective.query = positivePreferences.join(" ");
   const previousNames = recommendationArgs?.previous_item_names.length ? recommendationArgs.previous_item_names : previous.recommendedItemNames;
