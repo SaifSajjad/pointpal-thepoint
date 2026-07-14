@@ -1,6 +1,6 @@
 import { BUSINESS, FOODPANDA_URL, INSTAGRAM_URL, PRICE_SOURCE_NOTE, WEBSITE_URL } from "@/data/business";
 import { MENU } from "@/data/menu";
-import type { ConversationContext, GroundedReply, MenuItem, ReplyIntent } from "@/lib/types";
+import { EMPTY_CONVERSATION_CONTEXT, type ConversationContext, type GroundedReply, type MenuItem, type ReplyIntent } from "@/lib/types";
 
 const CATEGORY_ALIASES: Record<string, string[]> = {
   coffee: ["coffee", "coffees", "coffe", "cofee", "coffi", "cafi"],
@@ -81,7 +81,7 @@ const STOP_WORDS = new Set([
   "prices", "show", "something", "the", "to", "what", "with", "you", "your",
 ]);
 
-const EMPTY_CONTEXT: ConversationContext = { tags: [], budget: null, lastIntent: null };
+const EMPTY_CONTEXT: ConversationContext = EMPTY_CONVERSATION_CONTEXT;
 
 export function normalize(text: string): string {
   return text
@@ -182,6 +182,12 @@ function makeReply(
     context: {
       tags: options.tags ?? [],
       budget: options.budget ?? null,
+      category: (options.tags ?? []).find((tag) => !["hot", "cold"].includes(tag)) ?? null,
+      temperature: (options.tags ?? []).includes("cold") ? "cold" : (options.tags ?? []).includes("hot") ? "hot" : null,
+      sweetness: null,
+      exclusions: [],
+      preferences: [],
+      recommendedItemNames: items.map((item) => item.name),
       lastIntent: intent,
     },
   };

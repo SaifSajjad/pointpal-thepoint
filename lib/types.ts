@@ -27,7 +27,25 @@ export type ReplyIntent =
 export type ConversationContext = {
   tags: string[];
   budget: number | null;
+  category: string | null;
+  temperature: "hot" | "cold" | null;
+  sweetness: "low" | "balanced" | "sweet" | null;
+  exclusions: string[];
+  preferences: string[];
+  recommendedItemNames: string[];
   lastIntent: ReplyIntent | null;
+};
+
+export const EMPTY_CONVERSATION_CONTEXT: ConversationContext = {
+  tags: [],
+  budget: null,
+  category: null,
+  temperature: null,
+  sweetness: null,
+  exclusions: [],
+  preferences: [],
+  recommendedItemNames: [],
+  lastIntent: null,
 };
 
 export type GroundedReply = {

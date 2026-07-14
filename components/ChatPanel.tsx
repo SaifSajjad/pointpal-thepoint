@@ -3,7 +3,7 @@
 import { LoaderCircle, RotateCcw, Send, Sparkles, Trash2 } from "lucide-react";
 import { FormEvent, KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type { ChatMessage, ChatResponse, ConversationContext, MenuItem } from "@/lib/types";
+import { EMPTY_CONVERSATION_CONTEXT, type ChatMessage, type ChatResponse, type ConversationContext, type MenuItem } from "@/lib/types";
 
 type UiMessage = { id: string; role: "user" | "assistant"; content: string; response?: ChatResponse };
 
@@ -13,7 +13,7 @@ const QUICK_PROMPTS = [
   "Show me desserts",
   "Where are you located?",
 ];
-const INITIAL_CONTEXT: ConversationContext = { tags: [], budget: null, lastIntent: null };
+const INITIAL_CONTEXT: ConversationContext = EMPTY_CONVERSATION_CONTEXT;
 const INITIAL_MESSAGE: UiMessage = {
   id: "welcome",
   role: "assistant",
@@ -25,13 +25,14 @@ function AssistantItems({ items, onAsk }: { items: MenuItem[]; onAsk: (question:
   return (
     <div className="mt-3 grid gap-2 sm:grid-cols-2">
       {items.slice(0, 4).map((item) => (
-        <button key={item.name} type="button" onClick={() => onAsk(`Tell me about ${item.name}`)} className="rounded-xl border border-coffee/10 bg-white/75 p-3 text-left transition hover:border-sage/50 hover:bg-white">
+        <article key={item.name} className="rounded-xl border border-coffee/10 bg-white/75 p-3 text-left transition hover:border-sage/50 hover:bg-white">
           <span className="flex items-start justify-between gap-2">
             <span className="font-display text-sm leading-5 text-coffee">{item.name}</span>
             <span className="shrink-0 rounded-full bg-terracotta px-2 py-1 text-[10px] font-bold text-white">Rs. {item.price.toLocaleString("en-PK")}</span>
           </span>
           <span className="mt-1.5 block text-[11px] leading-4 text-coffee/58">{item.description}</span>
-        </button>
+          <button type="button" onClick={() => onAsk(`Tell me about ${item.name}`)} className="mt-2 text-[10px] font-bold text-deep-sage underline decoration-sage/30 underline-offset-4">Ask about this</button>
+        </article>
       ))}
     </div>
   );
@@ -85,6 +86,15 @@ export function ChatPanel() {
       }, 60);
     }
   }, [context, history, loading, scrollToLatest]);
+
+  useEffect(() => {
+    const handleAsk = (event: Event) => {
+      const question = (event as CustomEvent<string>).detail;
+      if (question) void send(question);
+    };
+    window.addEventListener("pointpal:ask", handleAsk);
+    return () => window.removeEventListener("pointpal:ask", handleAsk);
+  }, [send]);
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => scrollToLatest(messages.length <= 2 ? "auto" : "smooth"));

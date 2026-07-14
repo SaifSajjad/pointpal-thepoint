@@ -1,14 +1,14 @@
 import { z } from "zod";
 
-import {
-  BUSINESS,
-  FOODPANDA_URL,
-  INSTAGRAM_URL,
-  WEBSITE_URL,
-} from "@/data/business";
+import { BUSINESS, FOODPANDA_URL, INSTAGRAM_URL, WEBSITE_URL } from "@/data/business";
 import { MENU } from "@/data/menu";
 import { normalize } from "@/lib/pointpal";
-import type { ConversationContext, MenuItem, ReplyIntent } from "@/lib/types";
+import {
+  EMPTY_CONVERSATION_CONTEXT,
+  type ConversationContext,
+  type MenuItem,
+  type ReplyIntent,
+} from "@/lib/types";
 
 const categoryValues = [
   "any", "coffee", "dessert", "food", "tea", "matcha", "frappe", "sandwich",
@@ -34,6 +34,8 @@ const schemas = {
     ...commonShape,
     preferences: z.array(z.string().trim().min(1).max(50)).max(8),
     previous_item_names: z.array(z.string().trim().min(1).max(80)).max(8),
+    candidate_scope: z.enum(["menu", "previous_recommendations"]),
+    sort: z.enum(["recommended", "price_asc"]),
   }).strict(),
   get_business_info: z.object({
     topic: z.enum(["hours", "location", "phone", "instagram", "website", "delivery", "events", "general"]),
@@ -49,16 +51,11 @@ type ToolMeta = {
   intent: ReplyIntent;
   context: ConversationContext;
 };
-
 export type ToolExecution = ToolMeta & { output: string };
 
 const strictObject = (properties: Record<string, unknown>, required: string[]) => ({
-  type: "object",
-  properties,
-  required,
-  additionalProperties: false,
+  type: "object", properties, required, additionalProperties: false,
 });
-
 const commonProperties = {
   category: { type: ["string", "null"], enum: [...categoryValues, null] },
   temperature: { type: "string", enum: temperatureValues },
@@ -75,41 +72,36 @@ export const POINTPAL_TOOLS = [
     name: "search_menu",
     description: "Search verified menu records by words and structured filters. Use for menu discovery and prices.",
     strict: true,
-    parameters: strictObject(
-      { query: { type: ["string", "null"] }, ...commonProperties },
-      ["query", ...Object.keys(commonProperties)],
-    ),
+    parameters: strictObject({ query: { type: ["string", "null"] }, ...commonProperties }, ["query", ...Object.keys(commonProperties)]),
   },
   {
     type: "function" as const,
     name: "get_menu_item",
-    description: "Look up one named menu item using only verified local menu data.",
+    description: "Look up one named menu item using only verified local menu data. For ordinal follow-ups, pass the exact ordered name from session state.",
     strict: true,
     parameters: strictObject({ item_name: { type: "string" } }, ["item_name"]),
   },
   {
     type: "function" as const,
     name: "recommend_menu",
-    description: "Return grounded recommendations for preferences, budget, temperature and conversation follow-ups.",
+    description: "Return grounded recommendations or compare the ordered previous recommendations by price.",
     strict: true,
-    parameters: strictObject(
-      {
-        ...commonProperties,
-        preferences: { type: "array", items: { type: "string" }, maxItems: 8 },
-        previous_item_names: { type: "array", items: { type: "string" }, maxItems: 8 },
-      },
-      [...Object.keys(commonProperties), "preferences", "previous_item_names"],
-    ),
+    parameters: strictObject({
+      ...commonProperties,
+      preferences: { type: "array", items: { type: "string" }, maxItems: 8 },
+      previous_item_names: { type: "array", items: { type: "string" }, maxItems: 8 },
+      candidate_scope: { type: "string", enum: ["menu", "previous_recommendations"] },
+      sort: { type: "string", enum: ["recommended", "price_asc"] },
+    }, [...Object.keys(commonProperties), "preferences", "previous_item_names", "candidate_scope", "sort"]),
   },
   {
     type: "function" as const,
     name: "get_business_info",
     description: "Read verified address, hours, contact, official links or delivery information.",
     strict: true,
-    parameters: strictObject(
-      { topic: { type: "string", enum: ["hours", "location", "phone", "instagram", "website", "delivery", "events", "general"] } },
-      ["topic"],
-    ),
+    parameters: strictObject({
+      topic: { type: "string", enum: ["hours", "location", "phone", "instagram", "website", "delivery", "events", "general"] },
+    }, ["topic"]),
   },
   {
     type: "function" as const,
@@ -126,13 +118,32 @@ const CATEGORY_TAGS: Record<(typeof categoryValues)[number], string[]> = {
   cake: ["cake"], cold_drink: ["cold", "non-coffee"],
 };
 
-function emptyMeta(intent: ReplyIntent = "search"): ToolMeta {
-  return { items: [], sourceLabel: "", sourceUrl: "", intent, context: { tags: [], budget: null, lastIntent: intent } };
+function completeContext(previous: ConversationContext): ConversationContext {
+  return {
+    ...EMPTY_CONVERSATION_CONTEXT,
+    ...previous,
+    tags: [...(previous.tags ?? [])], exclusions: [...(previous.exclusions ?? [])],
+    preferences: [...(previous.preferences ?? [])],
+    category: previous.category ?? null,
+    temperature: previous.temperature ?? null,
+    sweetness: previous.sweetness ?? null,
+    recommendedItemNames: [...(previous.recommendedItemNames ?? [])],
+    lastIntent: previous.lastIntent ?? null,
+  };
+}
+
+function withIntent(previous: ConversationContext, intent: ReplyIntent): ConversationContext {
+  return { ...completeContext(previous), lastIntent: intent };
+}
+
+function emptyMeta(intent: ReplyIntent = "search", previous: ConversationContext = EMPTY_CONVERSATION_CONTEXT): ToolMeta {
+  return { items: [], sourceLabel: "", sourceUrl: "", intent, context: withIntent(previous, intent) };
 }
 
 function menuPayload(items: MenuItem[], caveat?: string) {
   return {
     matches: items.map(({ name, price, category, description, tags }) => ({ name, price, category, description, tags })),
+    ordered_item_names: items.map((item) => item.name),
     match_count: items.length,
     verification: "Foodpanda list prices checked 13 July 2026; prices and availability may change or differ in-store.",
     sweetness_note: caveat,
@@ -143,10 +154,11 @@ function categoryMatch(item: MenuItem, category: (typeof categoryValues)[number]
   return !category || CATEGORY_TAGS[category].every((tag) => item.tags.includes(tag));
 }
 
-function filterStructured(args: z.infer<typeof schemas.search_menu>): MenuItem[] {
+type FilterArgs = z.infer<typeof schemas.search_menu>;
+function filterStructured(args: FilterArgs, source: MenuItem[] = MENU): MenuItem[] {
   const queryTokens = normalize(args.query ?? "").split(" ").filter((word) => word.length > 2);
   const exclusions = args.exclude_terms.map(normalize);
-  return MENU.filter((item) => {
+  return source.filter((item) => {
     const haystack = normalize([item.name, item.category, item.description, ...item.tags].join(" "));
     return categoryMatch(item, args.category) &&
       (args.temperature === "any" || item.tags.includes(args.temperature)) &&
@@ -163,16 +175,14 @@ function sweetnessScore(item: MenuItem): number {
     .filter((term) => text.includes(term)).length;
 }
 
-function rank(items: MenuItem[], sweetness: (typeof sweetnessValues)[number], previous: string[] = []): MenuItem[] {
-  const seen = new Set(previous.map(normalize));
+function rank(items: MenuItem[], sweetness: (typeof sweetnessValues)[number], sort: "recommended" | "price_asc" = "recommended"): MenuItem[] {
   return [...items].sort((a, b) => {
-    const novelty = Number(seen.has(normalize(a.name))) - Number(seen.has(normalize(b.name)));
-    if (novelty) return novelty;
+    if (sort === "price_asc" && a.price !== b.price) return a.price - b.price;
     if (sweetness === "low") {
-      const score = sweetnessScore(a) - sweetnessScore(b);
-      if (score) return score;
+      const sweetnessDifference = sweetnessScore(a) - sweetnessScore(b);
+      if (sweetnessDifference) return sweetnessDifference;
     }
-    return Number(Boolean(b.popular)) - Number(Boolean(a.popular)) || a.price - b.price;
+    return Number(Boolean(b.popular)) - Number(Boolean(a.popular)) || a.price - b.price || a.name.localeCompare(b.name);
   });
 }
 
@@ -181,7 +191,18 @@ function bestItem(name: string): MenuItem | null {
   return MENU.find((item) => normalize(item.name) === needle) ?? null;
 }
 
-function businessResult(topic: z.infer<typeof schemas.get_business_info>["topic"]): ToolExecution {
+function itemFromReference(name: string, previous: ConversationContext): MenuItem | null {
+  const word = normalize(name).match(/\b(first|second|third|fourth|fifth|1st|2nd|3rd|4th|5th|pehla|pehli|doosra|doosri|dusra|dusri)\b/)?.[1];
+  const indexes: Record<string, number> = {
+    first: 0, "1st": 0, pehla: 0, pehli: 0,
+    second: 1, "2nd": 1, doosra: 1, doosri: 1, dusra: 1, dusri: 1,
+    third: 2, "3rd": 2, fourth: 3, "4th": 3, fifth: 4, "5th": 4,
+  };
+  const referencedName = word ? previous.recommendedItemNames[indexes[word]] : undefined;
+  return bestItem(referencedName ?? name);
+}
+
+function businessResult(topic: z.infer<typeof schemas.get_business_info>["topic"], previous: ConversationContext): ToolExecution {
   const facts: Record<typeof topic, unknown> = {
     location: { address: BUSINESS.location },
     phone: { phone: BUSINESS.phone },
@@ -197,55 +218,99 @@ function businessResult(topic: z.infer<typeof schemas.get_business_info>["topic"
     general: { name: BUSINESS.name, location: BUSINESS.location, phone: BUSINESS.phone, website: WEBSITE_URL },
   };
   const sourceUrl = topic === "instagram" ? INSTAGRAM_URL : topic === "delivery" ? FOODPANDA_URL : WEBSITE_URL;
-  const intent: ReplyIntent = topic === "phone"
-    ? "contact"
-    : topic === "general" || topic === "events" || topic === "website"
-      ? "general_guidance"
-      : topic;
+  const intent: ReplyIntent = topic === "phone" ? "contact" : topic === "general" || topic === "events" || topic === "website" ? "general_guidance" : topic;
   return {
-    output: JSON.stringify({ ok: true, topic, facts: facts[topic] }),
-    items: [], sourceLabel: topic === "delivery" ? "Foodpanda" : topic === "instagram" ? "Instagram" : "Official website",
-    sourceUrl, intent,
-    context: { tags: [], budget: null, lastIntent: intent },
+    output: JSON.stringify({ ok: true, topic, facts: facts[topic] }), items: [],
+    sourceLabel: topic === "delivery" ? "Foodpanda" : topic === "instagram" ? "Instagram" : "Official website",
+    sourceUrl, intent, context: withIntent(previous, intent),
   };
 }
 
-export function executePointPalTool(name: string, rawArguments: string): ToolExecution {
-  if (!(name in schemas)) {
-    return { ...emptyMeta("unknown"), output: JSON.stringify({ ok: false, error: "Tool is not allowed." }) };
-  }
+export function executePointPalTool(
+  name: string,
+  rawArguments: string,
+  previous: ConversationContext = EMPTY_CONVERSATION_CONTEXT,
+): ToolExecution {
+  previous = completeContext(previous);
+  if (!(name in schemas)) return { ...emptyMeta("unknown", previous), output: JSON.stringify({ ok: false, error: "Tool is not allowed." }) };
   let raw: unknown;
   try { raw = JSON.parse(rawArguments); } catch {
-    return { ...emptyMeta("unknown"), output: JSON.stringify({ ok: false, error: "Tool arguments were not valid JSON." }) };
+    return { ...emptyMeta("unknown", previous), output: JSON.stringify({ ok: false, error: "Tool arguments were not valid JSON." }) };
   }
   const parsed = schemas[name as ToolName].safeParse(raw);
-  if (!parsed.success) {
-    return { ...emptyMeta("unknown"), output: JSON.stringify({ ok: false, error: "Tool arguments did not match the allowed schema." }) };
-  }
+  if (!parsed.success) return { ...emptyMeta("unknown", previous), output: JSON.stringify({ ok: false, error: "Tool arguments did not match the allowed schema." }) };
 
-  if (name === "get_business_info") return businessResult((parsed.data as z.infer<typeof schemas.get_business_info>).topic);
+  if (name === "get_business_info") return businessResult((parsed.data as z.infer<typeof schemas.get_business_info>).topic, previous);
   if (name === "get_help_capabilities") {
-    return { ...emptyMeta("help"), output: JSON.stringify({ ok: true, capabilities: ["natural conversation", "verified menu search and prices", "budget and preference recommendations", "location, contact, hours and delivery", "English and Roman Urdu"], safety: "Ingredients and allergy safety must be confirmed with café staff." }) };
-  }
-
-  if (name === "get_menu_item") {
-    const item = bestItem((parsed.data as z.infer<typeof schemas.get_menu_item>).item_name);
-    const items = item ? [item] : [];
     return {
-      output: JSON.stringify({ ok: true, ...menuPayload(items) }), items,
-      sourceLabel: "Foodpanda menu", sourceUrl: FOODPANDA_URL, intent: item ? "item_lookup" : "no_match",
-      context: { tags: item?.tags.filter((tag) => ["coffee", "cold", "hot", "dessert", "food"].includes(tag)) ?? [], budget: null, lastIntent: item ? "item_lookup" : "no_match" },
+      ...emptyMeta("help", previous),
+      output: JSON.stringify({
+        ok: true,
+        capabilities: ["natural conversation", "verified menu search and prices", "budget and preference recommendations", "location, contact, hours and delivery", "English and Roman Urdu"],
+        safety: "Ingredients and allergy safety must be confirmed with café staff.",
+      }),
     };
   }
 
-  const args = parsed.data as z.infer<typeof schemas.search_menu> & { previous_item_names?: string[] };
-  const sweetnessCaveat = args.sweetness === "low" ? "Sweetness levels are not verified; these are ranked only by words in public names/descriptions. Ask café staff for the least-sweet option." : undefined;
-  const items = rank(filterStructured(args), args.sweetness, args.previous_item_names).slice(0, args.limit);
-  const tags = [...(args.category && args.category !== "any" ? CATEGORY_TAGS[args.category] : []), ...(args.temperature !== "any" ? [args.temperature] : [])];
+  if (name === "get_menu_item") {
+    const item = itemFromReference((parsed.data as z.infer<typeof schemas.get_menu_item>).item_name, previous);
+    const items = item ? [item] : [];
+    const intent: ReplyIntent = item ? "item_lookup" : "no_match";
+    return {
+      output: JSON.stringify({ ok: true, ...menuPayload(items) }), items,
+      sourceLabel: "Foodpanda menu", sourceUrl: FOODPANDA_URL, intent,
+      context: {
+        ...withIntent(previous, intent),
+        tags: item?.tags.filter((tag) => ["coffee", "cold", "hot", "dessert", "food"].includes(tag)) ?? previous.tags,
+      },
+    };
+  }
+
+  const rawArgs = parsed.data as z.infer<typeof schemas.search_menu> & Partial<z.infer<typeof schemas.recommend_menu>>;
+  const explicitCategory = rawArgs.category && rawArgs.category !== "any" ? rawArgs.category : null;
+  const categoryChanged = Boolean(explicitCategory && explicitCategory !== previous.category);
+  const effective: FilterArgs = {
+    ...rawArgs,
+    query: "query" in rawArgs ? rawArgs.query ?? null : null,
+    category: rawArgs.category === null ? previous.category as (typeof categoryValues)[number] | null : rawArgs.category,
+    temperature: rawArgs.temperature === "any" && !categoryChanged ? previous.temperature ?? "any" : rawArgs.temperature,
+    max_budget: rawArgs.max_budget ?? (categoryChanged ? null : previous.budget),
+    sweetness: rawArgs.sweetness === "unknown" && !categoryChanged ? previous.sweetness ?? "unknown" : rawArgs.sweetness,
+    exclude_terms: categoryChanged ? rawArgs.exclude_terms : [...new Set([...previous.exclusions, ...rawArgs.exclude_terms])],
+  };
+  const recommendationArgs = name === "recommend_menu" ? parsed.data as z.infer<typeof schemas.recommend_menu> : null;
+  const requestedPreferences = recommendationArgs?.preferences ?? (rawArgs.query ? [rawArgs.query] : previous.preferences);
+  const positivePreferences = requestedPreferences.filter((preference) =>
+    !/cheap|cheapest|popular|best|recommend|less sweet|low sweet|kam sweet/i.test(preference),
+  );
+  if (!effective.query && positivePreferences.length) effective.query = positivePreferences.join(" ");
+  const previousNames = recommendationArgs?.previous_item_names.length ? recommendationArgs.previous_item_names : previous.recommendedItemNames;
+  const previousItems = previousNames.map(bestItem).filter((item): item is MenuItem => Boolean(item));
+  const source = recommendationArgs?.candidate_scope === "previous_recommendations" ? previousItems : MENU;
+  const sweetnessCaveat = effective.sweetness === "low"
+    ? "Sweetness levels are not verified. Ranking only uses words in public names and descriptions; do not claim that an item is definitively less sweet. Ask café staff for exact sweetness or customisation."
+    : undefined;
+  const items = rank(filterStructured(effective, source), effective.sweetness, recommendationArgs?.sort).slice(0, effective.limit);
+  const tags = [
+    ...(effective.category && effective.category !== "any" ? CATEGORY_TAGS[effective.category] : []),
+    ...(effective.temperature !== "any" ? [effective.temperature] : []),
+  ];
+  const intent: ReplyIntent = name === "recommend_menu" ? "recommendation" : items.length ? "search" : "no_match";
   return {
     output: JSON.stringify({ ok: true, ...menuPayload(items, sweetnessCaveat) }), items,
-    sourceLabel: "Foodpanda menu", sourceUrl: FOODPANDA_URL,
-    intent: name === "recommend_menu" ? "recommendation" : items.length ? "search" : "no_match",
-    context: { tags, budget: args.max_budget, lastIntent: name === "recommend_menu" ? "recommendation" : items.length ? "search" : "no_match" },
+    sourceLabel: "Foodpanda menu", sourceUrl: FOODPANDA_URL, intent,
+    context: {
+      tags,
+      budget: effective.max_budget,
+      category: effective.category && effective.category !== "any" ? effective.category : null,
+      temperature: effective.temperature === "any" ? null : effective.temperature,
+      sweetness: effective.sweetness === "unknown" ? null : effective.sweetness,
+      exclusions: effective.exclude_terms,
+      preferences: categoryChanged
+        ? positivePreferences
+        : [...new Set([...previous.preferences, ...positivePreferences])],
+      recommendedItemNames: items.length ? items.map((item) => item.name) : previous.recommendedItemNames,
+      lastIntent: intent,
+    },
   };
 }

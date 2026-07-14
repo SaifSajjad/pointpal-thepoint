@@ -23,6 +23,12 @@ const requestSchema = z.object({
     .object({
       tags: z.array(z.string().trim().min(1).max(30)).max(6),
       budget: z.number().int().min(0).max(100_000).nullable(),
+      category: z.enum(["coffee", "dessert", "food", "tea", "matcha", "frappe", "sandwich", "wrap", "cake", "cold_drink"]).nullable().default(null),
+      temperature: z.enum(["hot", "cold"]).nullable().default(null),
+      sweetness: z.enum(["low", "balanced", "sweet"]).nullable().default(null),
+      exclusions: z.array(z.string().trim().min(1).max(40)).max(8).default([]),
+      preferences: z.array(z.string().trim().min(1).max(50)).max(8).default([]),
+      recommendedItemNames: z.array(z.string().trim().min(1).max(80)).max(5).default([]),
       lastIntent: z
         .enum([
           "empty",
@@ -43,7 +49,10 @@ const requestSchema = z.object({
         ])
         .nullable(),
     })
-    .default({ tags: [], budget: null, lastIntent: null }),
+    .default({
+      tags: [], budget: null, category: null, temperature: null, sweetness: null,
+      exclusions: [], preferences: [], recommendedItemNames: [], lastIntent: null,
+    }),
 });
 
 type RateState = { count: number; resetAt: number };

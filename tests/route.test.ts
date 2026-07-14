@@ -14,7 +14,10 @@ function request(body: unknown, ip: string, contentType = "application/json") {
 const aiReply = {
   text: "Hi! What kind of coffee are you in the mood for?", sourceLabel: "", sourceUrl: "",
   intent: "conversation", items: [], budget: null,
-  context: { tags: [], budget: null, lastIntent: "conversation" }, mode: "ai",
+  context: {
+    tags: [], budget: null, category: null, temperature: null, sweetness: null,
+    exclusions: [], preferences: [], recommendedItemNames: [], lastIntent: "conversation",
+  }, mode: "ai",
 };
 
 describe("POST /api/chat", () => {

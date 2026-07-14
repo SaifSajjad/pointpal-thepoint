@@ -18,7 +18,7 @@ describe("validated PointPal tools", () => {
   });
 
   it("filters cold coffee to the budget", () => {
-    const result = executePointPalTool("recommend_menu", JSON.stringify({ ...base, category: "coffee", temperature: "cold", max_budget: 800, preferences: [], previous_item_names: [] }));
+    const result = executePointPalTool("recommend_menu", JSON.stringify({ ...base, category: "coffee", temperature: "cold", max_budget: 800, preferences: [], previous_item_names: [], candidate_scope: "menu", sort: "recommended" }));
     expect(result.items.length).toBeGreaterThan(0);
     expect(result.items.every((item) => item.tags.includes("cold") && item.price <= 800)).toBe(true);
   });

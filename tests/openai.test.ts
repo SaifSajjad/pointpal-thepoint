@@ -4,8 +4,12 @@ import type { Response as OpenAIResponse } from "openai/resources/responses/resp
 vi.mock("server-only", () => ({}));
 
 import { runPointPalAgent, type ResponseCreator } from "@/lib/openai";
+import type { ConversationContext } from "@/lib/types";
 
-const context = { tags: [], budget: null, lastIntent: null };
+const context: ConversationContext = {
+  tags: [], budget: null, category: null, temperature: null, sweetness: null,
+  exclusions: [], preferences: [], recommendedItemNames: [], lastIntent: null,
+};
 function response(output: OpenAIResponse["output"], outputText = ""): OpenAIResponse {
   return { output, output_text: outputText } as OpenAIResponse;
 }
@@ -65,7 +69,7 @@ describe("OpenAI-first PointPal agent", () => {
   });
 
   it("grounds Roman Urdu recommendations in verified menu data", async () => {
-    const args = { category: "coffee", temperature: "any", max_budget: null, min_budget: null, sweetness: "unknown", exclude_terms: [], limit: 3, preferences: [], previous_item_names: [] };
+    const args = { category: "coffee", temperature: "any", max_budget: null, min_budget: null, sweetness: "unknown", exclude_terms: [], limit: 3, preferences: [], previous_item_names: [], candidate_scope: "menu", sort: "recommended" };
     const create = vi.fn<ResponseCreator>()
       .mockResolvedValueOnce(response([call("recommend_menu", args)]))
       .mockResolvedValueOnce(response([], "Coffee is a lovely pick. Espresso and Latte are solid choices."));
@@ -78,7 +82,7 @@ describe("OpenAI-first PointPal agent", () => {
   it.each([
     "konsi coffee piyun?", "koi sasti coffee suggest kro", "800 tak thandi coffee batao", "kam sweet kuch suggest kro",
   ])("grounds Roman Urdu menu request: %s", async (message) => {
-    const args = { category: "coffee", temperature: "any", max_budget: 800, min_budget: null, sweetness: "unknown", exclude_terms: [], limit: 3, preferences: [], previous_item_names: [] };
+    const args = { category: "coffee", temperature: "any", max_budget: 800, min_budget: null, sweetness: "unknown", exclude_terms: [], limit: 3, preferences: [], previous_item_names: [], candidate_scope: "menu", sort: "recommended" };
     const create = vi.fn<ResponseCreator>()
       .mockResolvedValueOnce(response([call("recommend_menu", args)]))
       .mockResolvedValueOnce(response([], "Here are grounded options within your budget."));
@@ -143,5 +147,10 @@ describe("OpenAI-first PointPal agent", () => {
     const create = vi.fn<ResponseCreator>().mockResolvedValue(response([call("get_help_capabilities", {}, "repeat")]));
     await expect(runPointPalAgent("help", [], context, create)).rejects.toThrow("AgentToolLimitExceeded");
     expect(create).toHaveBeenCalledTimes(3);
+  });
+
+  it("enforces one overall agent deadline", async () => {
+    const create: ResponseCreator = () => new Promise(() => undefined);
+    await expect(runPointPalAgent("hi", [], context, create, 20)).rejects.toThrow("AgentDeadlineExceeded");
   });
 });

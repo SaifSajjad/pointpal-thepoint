@@ -15,11 +15,12 @@ When a server-side OpenAI key is available, the Responses API is the conversatio
 - OpenAI-first conversation for greetings, clarifying questions, English, Roman Urdu, and common misspellings
 - 75 structured menu records with verified list prices and source caveats
 - Exact item lookup and grounded recommendations by category, temperature, budget, and preferences
-- Multi-turn follow-ups using the most recent 12 session messages
+- Multi-turn follow-ups using the most recent 12 messages plus ordered, server-verified recommendation state
+- Correct ordinal and comparison handling for “the second option,” “which is cheapest?” and “anything cheaper?”
 - Verified hours, address, phone, Instagram, website, and delivery information
 - Transparent handling of conflicting published hours
 - Conservative allergy guidance and graceful handling of unknown facts
-- Focused responsive chat with four suggestion chips, multiline input, clear, retry, autoscroll, and keyboard controls
+- Focused responsive chat with four suggestion chips, searchable menu modal, “Ask about this,” multiline input, clear, retry, autoscroll, and keyboard controls
 - Strict input validation, timeouts, no-store responses, and basic per-client abuse protection
 - Fully functional core flows without an API key
 
@@ -53,7 +54,7 @@ Browser UI
 
 OpenAI is imported only in server code. `OPENAI_API_KEY` is read only through `process.env.OPENAI_API_KEY`; there is no `NEXT_PUBLIC_` key and no secret is sent to the browser. Tool names and arguments are allow-listed and schema-validated before local execution. Tool output returns to the model through the Responses API function-call output format.
 
-Conversation history is held only in the active browser component. Each request sends at most the latest 12 messages; Clear chat resets the UI history and deterministic preference context. The server does not persist conversations or mix sessions.
+Conversation history is held only in the active browser component. Each request sends at most the latest 12 messages plus structured state for ordered recommendation names, category, temperature, budget, exclusions, preferences, sweetness, and last intent. Clear chat resets all of it. The server does not persist conversations or mix sessions. The complete agent loop has an 11-second deadline, shorter than the 15-second Vercel route limit.
 
 ## Local setup
 
@@ -110,7 +111,7 @@ The homepage/footer lists `8:00 AM–1:00 AM`, while the Phase 6 location page l
 
 ## Tests and safety
 
-The mocked agent and deterministic regression suites cover greetings, casual and general coffee questions, Roman Urdu, budget/category filters, multi-turn context, menu and business tools, exact prices, conflicting hours, allergy caution, prompt injection, missing keys, timeouts, rate limits, malformed and unknown tools, empty output, loop limits, request validation, and abuse protection. Tests never spend API credits.
+The mocked agent and deterministic regression suites cover greetings, casual and general coffee questions, Roman Urdu, budget/category filters, exact ordered multi-turn item/price sequences, menu and business tools, conflicting hours, allergy caution, prompt injection, missing keys, timeouts, rate limits, malformed and unknown tools, empty output, loop and overall deadline limits, request validation, and abuse protection. Tests never spend API credits.
 
 ## Project structure
 
